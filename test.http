@@ -1,0 +1,8 @@
+POST http://localhost:3000/auth/verify-code
+Content-Type: application/json
+
+{
+  "email": "test@test.com",
+  "code": "916627",
+  "device_id": "device_2"
+}

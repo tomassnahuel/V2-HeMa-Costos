@@ -77,7 +77,7 @@ class _HistorialPresupuestoScreenState
                       ),
                     );
                     return;
-                  };
+                  }
                   await OpenFile.open(p.filePath);
                 },
                 onDelete: () async {

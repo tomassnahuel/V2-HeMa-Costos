@@ -24,9 +24,6 @@ class GenerarPresupuestoScreen extends StatefulWidget {
       _GenerarPresupuestoScreenState();
       
 } 
-
-final _controller = TextEditingController(text: '0.00');
-
 class _GenerarPresupuestoScreenState extends State<GenerarPresupuestoScreen> {
   final _presupuestoDao = PresupuestoGuardadoDao();
   final _clienteController = TextEditingController();

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hemacostos/ui/screens/login_screen.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/theme/app_theme.dart';
 
@@ -15,7 +16,8 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'HeMa Costos',
       theme: AppTheme.lightTheme,
-      home: const HomeScreen(),
+      //home: const HomeScreen(),
+      home: LoginScreen(),
     );
   }
 }
