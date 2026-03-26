@@ -13,7 +13,12 @@ const app = express();
 app.use(express.json());
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  //connectionString: process.env.DATABASE_URL,
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
 });
 
 /*const pool = new Pool({
@@ -28,7 +33,7 @@ const CODE_TTL_MINUTES = 5;
 const EMAIL_REQUEST_WINDOW_SECONDS = 60;
 const EMAIL_REQUEST_HOURLY_LIMIT = 5;
 const MAX_VERIFY_ATTEMPTS = 5;
-const DEVICE_CONFLICT_WINDOW_MINUTES = 10;
+const DEVICE_CONFLICT_WINDOW_MINUTES = 90;
 
 const GENERIC_REQUEST_CODE_RESPONSE = {
   ok: true,
@@ -239,7 +244,11 @@ async function upsertUserDevice(client: PoolClient, email: string, deviceId: str
 app.post('/auth/request-code', async (req: Request<unknown, unknown, RequestCodeBody>, res: Response) => {
   const emailInput = req.body?.email;
   if (typeof emailInput !== 'string' || emailInput.trim() === '') {
-    return res.status(200).json(GENERIC_REQUEST_CODE_RESPONSE);
+    return res.status(200).json({
+      ok: true,
+      message: 'Código enviado si tu mail tiene licencia activa. Revisa tu correo.',
+      cooldown_seconds: EMAIL_REQUEST_WINDOW_SECONDS
+    });
   }
 
   const email = normalizeEmail(emailInput);
@@ -309,21 +318,22 @@ app.post('/auth/verify-code', async (req: Request<unknown, unknown, VerifyCodeBo
     const result = await withTransaction(async (client) => {
       const licensed = await hasActiveLicense(client, email);
       if (!licensed) {
-        return { status: 401 as const, body: { error: 'invalid_credentials' } };
+        return { status: 401 as const, body: { error: 'No tienes licencia activa.' } };
       }
 
       const authCode = await getLatestAuthCodeForUpdate(client, email);
       if (!authCode) {
-        return { status: 401 as const, body: { error: 'invalid_credentials' } };
+        return { status: 401 as const, body: { error: 'Código no encontrado. Solicita uno nuevo.' } };
       }
 
       if (authCode.blocked_until && new Date() < authCode.blocked_until) {
-        return { status: 429 as const, body: { error: 'temporarily_blocked' } };
-    }
+        const secondsLeft = Math.ceil((authCode.blocked_until.getTime() - new Date().getTime()) / 1000);
+        return { status: 429 as const, body: { error: `Demasiados intentos. Intenta nuevamente en ${secondsLeft} segundos.` } };
+      }
 
 
       if ( authCode.expires_at <= new Date()) {
-        return { status: 401 as const, body: { error: 'invalid_credentials' } };
+        return { status: 401 as const, body: { error: 'Código expirado. Solicita uno nuevo.' } };
       }
 
       if (hashSHA256(codeInput) !== authCode.code_hash) {
