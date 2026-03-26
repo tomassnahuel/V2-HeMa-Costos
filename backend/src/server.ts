@@ -1,13 +1,8 @@
 
-console.log("DATABASE_URL:", process.env.DATABASE_URL);
-
-import 'dotenv/config';
-
-
-
 import express, { Request, Response } from 'express';
 import { Pool, PoolClient, QueryResult } from 'pg';
 import crypto from 'node:crypto';
+import { sendEmail } from './utils/sendEmail.js';
 
 const app = express();
 app.use(express.json());
@@ -19,15 +14,9 @@ const pool = new Pool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_DATABASE,
+  ssl: { rejectUnauthorized: false }
 });
 
-/*const pool = new Pool({
-  user: 'postgres',
-  password: '2350',
-  host: 'localhost',
-  port: 5432,
-  database: 'licenses_db',
-});*/
 
 const CODE_TTL_MINUTES = 5;
 const EMAIL_REQUEST_WINDOW_SECONDS = 60;
@@ -37,7 +26,7 @@ const DEVICE_CONFLICT_WINDOW_MINUTES = 90;
 
 const GENERIC_REQUEST_CODE_RESPONSE = {
   ok: true,
-  message: 'If the email is eligible, a verification code will be sent.',
+  message: 'Código enviado si tu mail tiene licencia activa. Revisa tu correo.',
 };
 
 const SCHEMA_SQL = `
@@ -106,9 +95,9 @@ function generateCode(): string {
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
 }
 
-async function sendEmail(email: string, code: string): Promise<void> {
+/*async function sendEmail(email: string, code: string): Promise<void> {
   console.info(`[sendEmail stub] Send code ${code} to ${email} via Resend.`);
-}
+}*/
 
 async function withTransaction<T>(handler: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
@@ -253,42 +242,43 @@ app.post('/auth/request-code', async (req: Request<unknown, unknown, RequestCode
 
   const email = normalizeEmail(emailInput);
 
-  try {
-    const outcome: Outcome = await withTransaction(async (client) => {
-      await client.query("LOCK TABLE auth_codes IN ROW EXCLUSIVE MODE");  
-      const licensed = await hasActiveLicense(client, email);
-      if (!licensed) {
-        return {
-             status: 403 as const,
-             body: { error: 'no_license' }, 
-            };
-      }
-
-      const withinLimit = await checkRequestRateLimit(client, email);
-      if (!withinLimit) {
-        return { 
-            status: 429 as const,
-            body: { error: 'too_many_requests' },
-        };
-      }
-
-      const code = generateCode();
-      await storeAuthCode(client, email, hashSHA256(code));
-      return { shouldSend: true, code };
-    });
-    // RECHEQUEAR
-    if ( "status" in outcome && outcome.status === 429) {
-      return res.status(429).json(outcome.body);
+try {
+  const outcome: Outcome = await withTransaction(async (client) => {
+    await client.query("LOCK TABLE auth_codes IN ROW EXCLUSIVE MODE");  
+    const licensed = await hasActiveLicense(client, email);
+    if (!licensed) {
+      return {
+           status: 403 as const,
+           body: { error: 'no_license' }, 
+          };
     }
 
-    if ( "status" in outcome && outcome.status === 403) {
-      return res.status(403).json(outcome.body);
-    }
-    if ("shouldSend" in outcome && outcome.shouldSend) {
-      await sendEmail(email, outcome.code);
+    const withinLimit = await checkRequestRateLimit(client, email);
+    if (!withinLimit) {
+      return { 
+          status: 429 as const,
+          body: { error: 'too_many_requests' },
+      };
     }
 
-    return res.status(200).json(GENERIC_REQUEST_CODE_RESPONSE);
+    const code = generateCode();
+    await storeAuthCode(client, email, hashSHA256(code));
+    return { shouldSend: true, code };
+  });
+
+  if ("status" in outcome && outcome.status === 429) {
+    return res.status(429).json(outcome.body);
+  }
+
+  if ("status" in outcome && outcome.status === 403) {
+    return res.status(403).json(outcome.body);
+  }
+
+  if ("shouldSend" in outcome && outcome.shouldSend) {
+    await sendEmail(email, outcome.code);
+  }
+
+  return res.status(200).json(GENERIC_REQUEST_CODE_RESPONSE);
   } catch (error) {
     console.error('request-code failed', error);
     return res.status(500).json({ error: 'internal_error' });
