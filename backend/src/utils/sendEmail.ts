@@ -6,7 +6,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export async function sendEmail(email: string, code: string): Promise<void> {
   try {
     await resend.emails.send({
-      from: 'HeMa Costos <onboarding@resend.dev>',
+      from: 'HeMa Costos <onboarding@hema.com>',
       to: email,
       subject: 'Tu código de acceso',
       html: `
