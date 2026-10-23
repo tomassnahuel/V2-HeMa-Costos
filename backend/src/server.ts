@@ -247,10 +247,8 @@ try {
     await client.query("LOCK TABLE auth_codes IN ROW EXCLUSIVE MODE");  
     const licensed = await hasActiveLicense(client, email);
     if (!licensed) {
-      return {
-           status: 403 as const,
-           body: { error: 'no_license' }, 
-          };
+      // Retornar genérico sin enviar email para prevenir enumeración de usuarios
+      return { shouldSend: false, code: '' };
     }
 
     const withinLimit = await checkRequestRateLimit(client, email);
@@ -268,10 +266,6 @@ try {
 
   if ("status" in outcome && outcome.status === 429) {
     return res.status(429).json(outcome.body);
-  }
-
-  if ("status" in outcome && outcome.status === 403) {
-    return res.status(403).json(outcome.body);
   }
 
   if ("shouldSend" in outcome && outcome.shouldSend) {
